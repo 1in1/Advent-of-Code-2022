@@ -1,21 +1,30 @@
 import Control.Applicative
+import Control.Arrow ((***))
 import Control.Monad
 import System.IO
 
-getScore :: (Int, Int) -> Int
-getScore (u, v) = shapeValue v + convertToScore ((u - v) `mod` 3) where
-    convertToScore 0 = 3
-    convertToScore 1 = 0
-    convertToScore 2 = 6
-    shapeValue = (+1)
+data Shape = Rock | Paper | Scissors deriving Enum
+shapeValue :: Shape -> Int
+shapeValue = (+1) . fromEnum
+data Outcome = Lose | Draw | Win deriving Enum
+outcomeValue :: Outcome -> Int
+outcomeValue = (*3) . fromEnum
 
-stringsToInt :: [String] -> (Int, Int)
-stringsToInt = ((,) <$> (+(- fromEnum 'A')) . head <*> (+(- fromEnum 'X')) . last) . map (fromEnum . head)
+fromABC :: Enum a => String -> a
+fromABC = toEnum . subtract (fromEnum 'A') . fromEnum . head
+fromXYZ :: Enum a => String -> a
+fromXYZ = toEnum . subtract (fromEnum 'X') . fromEnum . head
 
-adjust :: (Int, Int) -> (Int, Int)
-adjust = (,) <$> fst <*> (`mod` 3) . (+2) . uncurry (+)
+toTuple :: [a] -> (a, a)
+toTuple [u, v] = (u, v)
 
-strategy1 = sum . map (getScore . stringsToInt)
-strategy2 = sum . map (getScore . adjust . stringsToInt)
+outcomeFromShapes :: (Shape, Shape) -> Outcome
+outcomeFromShapes = toEnum . (`mod` 3) . (+1) . uncurry subtract . (fromEnum *** fromEnum)
 
-main = print . ((,) <$> strategy1 <*> strategy2) . map words . lines =<< readFile "input"
+shapeFromOutcome :: (Shape, Outcome) -> Shape
+shapeFromOutcome = toEnum . (`mod` 3) . (+2) . uncurry (+) . (fromEnum *** fromEnum)
+
+strategy1 = sum . map (((+) <$> shapeValue . snd <*> outcomeValue . outcomeFromShapes) . (fromABC *** fromXYZ))
+strategy2 = sum . map (((+) <$> shapeValue . shapeFromOutcome <*> outcomeValue . snd) . (fromABC *** fromXYZ))
+
+main = print . ((,) <$> strategy1 <*> strategy2) . map (toTuple . words) . lines =<< readFile "input"
