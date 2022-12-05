@@ -1,4 +1,5 @@
 import Control.Applicative
+import Control.Arrow
 import Control.Lens
 import Control.Monad
 import Data.List.Split
@@ -17,4 +18,4 @@ intersectChars = priority . head . HashSet.toList . foldl1 HashSet.intersection 
 itemsSolution = sum . map (intersectChars . (^..each) . (splitAt <$> (`div` 2) . length <*> id))
 badgesSolution = sum . map intersectChars . chunksOf 3
 
-main = print . ((,) <$> itemsSolution <*> badgesSolution) . lines =<< readFile "input"
+main = print . (itemsSolution &&& badgesSolution) . lines =<< readFile "input"

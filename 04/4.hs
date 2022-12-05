@@ -1,4 +1,5 @@
 import Control.Applicative
+import Control.Arrow
 import Control.Monad
 import Data.List.Split
 import System.IO
@@ -13,4 +14,4 @@ fullContainment = length . filter ((||) <$> contains <*> contains . reverse)
 anyOverlap = length . filter overlap
 
 parseInput = map (map (map read . splitOn "-") . splitOn ",") . lines
-main = print . ((,) <$> fullContainment <*> anyOverlap) . parseInput =<< readFile "input"
+main = print . (fullContainment &&& anyOverlap) . parseInput =<< readFile "input"

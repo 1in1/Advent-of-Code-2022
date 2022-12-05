@@ -1,13 +1,11 @@
 import Control.Applicative
+import Control.Arrow
 import Control.Monad
 import Data.List
 import Data.List.Split
 import System.IO
 
-readInt :: String -> Int
-readInt = read
-
-calList = map (sum . map readInt . words) . splitOn "\n\n"
+calList = map (sum . map read . words) . splitOn "\n\n"
 sumThreeCals = sum . topThree
 topThree (x:xs)
     | length xs < 3 = x:xs
@@ -17,4 +15,4 @@ topThree (x:xs)
         mini = minimum z
         zz = delete mini (x:z)
 
-main = print . ((,) <$> maximum <*> sumThreeCals) . calList =<< readFile "input"
+main = print . (maximum &&& sumThreeCals) . calList =<< readFile "input"
