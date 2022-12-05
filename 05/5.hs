@@ -6,18 +6,18 @@ import Data.List.Split
 import Data.String.Utils
 import System.IO
 
-stackCount = length . words . head . filter (notElem '[')
-stacks = reverse . map (map strip . chunksOf 4) . takeWhile (elem '[')
-initialState = map (filter (/= "")) . (foldl (zipWith (flip (:))) <$> ((`replicate` []) . stackCount) <*> stacks)
+emptyStacks = (`replicate` []) . length . words . head . filter (notElem '[')
+stackText = reverse . map (map strip . chunksOf 4) . takeWhile (elem '[')
+initialState = map (filter (/= "")) . (foldl (zipWith (flip (:))) <$> emptyStacks <*> stackText)
 
 moves = map (((,,) <$> (!!1) <*> (!!3) <*> (!!5)) . map read . words) . filter (elem 'm')
 
 type ShiftFunction a = Int -> [a] -> [a] -> ([a], [a])
 stackShift :: ShiftFunction a
-stackShift n y = first (++y) <<< first reverse <<< splitAt n
+stackShift = flip ((<<<) . (<<< first reverse) . first . flip (++)) . splitAt
 
 listShift :: ShiftFunction a
-listShift n y = first (++y) <<< splitAt n
+listShift = flip ((<<<) . first . flip (++)) . splitAt
 
 updateStacks :: ShiftFunction a -> [[a]] -> (Int, Int, Int) -> [[a]]
 updateStacks shiftFn s (n, from, to) = s'' where
@@ -28,5 +28,5 @@ updateStacks shiftFn s (n, from, to) = s'' where
 applyMoves :: ShiftFunction a -> [[a]] -> [(Int, Int, Int)] -> [[a]]
 applyMoves = foldl . updateStacks
 
-solve shiftFn = map ((!!1) . head) . (applyMoves shiftFn <$> initialState <*> moves)
+solve = (map ((!!1) . head) . ) . (<*> moves) . (<$> initialState) . applyMoves
 main = print . (solve stackShift &&& solve listShift) . lines =<< readFile "input"
