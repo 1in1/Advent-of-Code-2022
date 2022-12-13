@@ -10,34 +10,37 @@ import Data.Maybe
 import Data.String.Utils
 import System.IO
 import qualified Data.Map as Map
+import Debug.Trace
 
-data Monkey = Monkey { op' :: Int -> Int, next :: Int -> Int, divTestN :: Int }
-type RoundState = [Int]
 
-ops :: Num a => Map String (a -> a -> a)
-ops = Map.fromList [("+", (+)), ("*", (*))]
+data Monkey = Monkey { op' :: Int -> Int, next :: Int -> Int, divN :: Int }
 
-operand :: String -> Int -> Int
-operand = maybe id const . maybeRead
+readOperation :: [String] -> Int -> Int
+readOperation = uncurry (.) . 
+        (readOp *** (uncurry (&&&) . over both (maybe id const . maybeRead))) . 
+        ((!!1) &&& ((!!0) &&& (!!2))) .
+        words .
+        last .
+        splitOn "=" .
+        (!!2) where
+    
+    readOp :: String -> (Int, Int) -> Int
+    readOp "+" = uncurry (+)
+    readOp "*" = uncurry (*)
 
-operation :: [String] -> (Int -> Int -> Int, (Int -> Int, Int -> Int))
-operation = ((ops Map.!) *** over both operand) . ((!!1) &&& ((!!0) &&& (!!2))) 
-fullOperation :: String -> Int -> Int
-fullOperation xs n = o (f n) (g n) where
-    (o, (f, g)) = operation $ words $ last $ splitOn "=" xs
+readNext :: [String] -> Int -> Int
+readNext xs = bool falseCase trueCase . (== 0) . (`mod` n) where
+    [n, trueCase, falseCase] = map (read . head . words . filter (`elem` "0123456789 ")) $ drop 3 xs
 
-startingItems :: String -> [Int]
-startingItems = map read . words . filter (`elem` "0123456789 ")
+readDivN :: [String] -> Int
+readDivN = read . last . words . (!!3)
 
-test :: [String] -> Int -> Int
-test xs = bool falseCase trueCase . (== 0) . (`mod` n) where
-    [n, trueCase, falseCase] = map (read . head . words . filter (`elem` "0123456789 ")) xs
-
-divN :: [String] -> Int
-divN = read . last . words . head
+startingItems :: [String] -> [Int]
+startingItems = map read . words . filter (`elem` "0123456789 ") . (!!1)
 
 readMonkey :: [String] -> ([Int], Monkey)
-readMonkey xs = (startingItems (xs!!1), Monkey (fullOperation (xs!!2)) (test $ drop 3 xs) (divN $ drop 3 xs))
+readMonkey = startingItems &&& (Monkey <$> readOperation <*> readNext <*> readDivN)
+
 
 processMonkey :: (Int -> Int) -> Int -> Monkey -> [Int] -> [[Int]]
 processMonkey worryControl n monkey = foldl (flip (\(a, b) -> over (element a) (++[b]))) (replicate n []) . map ((next monkey &&& id) . worryControl . op' monkey)
@@ -54,6 +57,6 @@ monkeys :: String -> (([[Int]], [Int]), [Monkey])
 monkeys = first (id &&& flip replicate 0 . length) . unzip . map (readMonkey . lines) . splitOn "\n\n"
 
 solution1 = monkeyBusiness . (!!20) . (iterate <$> (doRound (`div` 3) <$> length <*> zip [0..]) . snd <*> fst)
-solution2 = monkeyBusiness . (!!10000) . (iterate <$> (doRound <$> flip mod . foldl lcm 1 . map divTestN <*> length <*> zip [0..]) . snd <*> fst)
+solution2 = monkeyBusiness . (!!10000) . (iterate <$> (doRound <$> flip mod . foldl lcm 1 . map divN <*> length <*> zip [0..]) . snd <*> fst)
 
 main = print . (solution1 &&& solution2) . monkeys =<< readFile "input"
