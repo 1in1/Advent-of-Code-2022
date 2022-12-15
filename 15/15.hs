@@ -1,4 +1,5 @@
 import Control.Arrow
+import Control.Applicative
 import Control.Monad
 import Data.Bool
 import Data.List
@@ -57,13 +58,23 @@ intersectXRanges (a,b) (a',b')
     range = (max a a', min b b')
 
 solution1 = sum . map (uncurry subtract) . mergeXRanges . mapMaybe (xRangeAtY True 2000000)
-solution2 pairs = tuningFreq $ first ((+1) . snd . minimum) . head $
-        filter ((/= [(0,4000000)]) . fst) $
-        map ((,) <$> mapMaybe (intersectXRanges (0,4000000)) . mergeXRanges . catMaybes . flip map pairs . xRangeAtY False <*> id)
-        yValuesWorthChecking where
+solution2 = tuningFreq . 
+        first ((+1) . snd . minimum) . 
+        head .
+        filter ((/= [(0,4000000)]) . fst) .
+        ap (
+            map . (<*> id) . ((,) <$>) . 
+            ((mapMaybe (intersectXRanges (0, 4000000)) . mergeXRanges . catMaybes) .) . 
+            (. xRangeAtY False) . flip map
+        ) yValuesWorthChecking where
 
-    sensors = map (fst &&& uncurry d) pairs
-    yValuesWorthChecking = (filter (>=0) . filter (<4000000) . nub . concat) (getBoundaryIntersections <$> sensors <*> sensors)
+    sensors = map (fst &&& uncurry d)
+    yValuesWorthChecking = filter (>=0) . 
+        filter (<4000000) . 
+        nub . 
+        concatMap (uncurry getBoundaryIntersections) .
+        (concatMap <$> (. repeat) . zip <*> id) .
+        sensors
 
     -- Intersect the lines u-(y+d+1) = +-(v-x), and u-(y'+d'+1) = +-(v-x')
     -- This happens at:
