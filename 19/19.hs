@@ -1,15 +1,11 @@
 import Control.Applicative
 import Control.Arrow
-import Debug.Trace
 import Control.Lens
 import Control.Monad
 import Data.Bool
-import Data.HashSet (HashSet)
 import Data.List
-import Data.List.Split
 import Data.Maybe
 import System.IO
-import qualified Data.HashSet as HashSet
 
 data Blueprint = Blueprint { 
     oreCost :: Int, 
@@ -133,4 +129,4 @@ solution2 = product .
     map (\b -> dfs 32 b 0 [initialState]) .
     take 3
 
-main = print . solution2 . parse =<< readFile "input"
+main = print . (solution1 &&& solution2) . parse =<< readFile "input"
