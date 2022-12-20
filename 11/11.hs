@@ -3,16 +3,23 @@ import Control.Arrow
 import Control.Lens
 import Control.Monad
 import Data.Bool
-import Data.IntMap.Lazy(IntMap)
+import Data.Foldable (toList)
 import Data.List
 import Data.List.Split
 import Data.Maybe
+import Data.Sequence (Seq)
 import Data.String.Utils
 import System.IO
-import qualified Data.IntMap.Lazy as IntMap
+import qualified Data.Sequence as Seq
 
 
-data Monkey = Monkey { op' :: Int -> Int, next :: Int -> Int, divN :: Int }
+data Monkey = Monkey { 
+    op' :: Int -> Int, 
+    next :: Int -> Int, 
+    divN :: Int,
+    items :: Seq Int,
+    interactionCount :: Int
+    }
 
 readOperation :: [String] -> Int -> Int
 readOperation = uncurry (.) . 
@@ -34,31 +41,45 @@ readNext xs = bool falseCase trueCase . (== 0) . (`mod` n) where
 readDivN :: [String] -> Int
 readDivN = read . last . words . (!!3)
 
-readStartingItems :: [String] -> [Int]
-readStartingItems = map read . words . filter (`elem` "0123456789 ") . (!!1)
+readStartingItems :: [String] -> Seq Int
+readStartingItems = Seq.fromList . map read . words . filter (`elem` "0123456789 ") . (!!1)
 
-readMonkey :: [String] -> ([Int], Monkey)
-readMonkey = readStartingItems &&& (Monkey <$> readOperation <*> readNext <*> readDivN)
+readMonkey :: [String] -> Monkey
+readMonkey = Monkey <$> readOperation <*> readNext <*> readDivN <*> readStartingItems <*> const 0
 
-
-processMonkey :: (Int -> Int) -> Int -> Monkey -> [Int] -> IntMap [Int]
-processMonkey worryControl n monkey = foldl foldFn IntMap.empty . map ((next monkey &&& id) . worryControl . op' monkey) where
-    foldFn curr (newMonkey, newVal) = IntMap.insertWith (flip (++)) newMonkey [newVal] curr
-
-doRound :: (Int -> Int) -> Int -> [(Int, Monkey)] -> (IntMap [Int], [Int]) -> (IntMap [Int], [Int])
-doRound worryControl n [] = id
-doRound worryControl n ((idx, monkey):xs) = doRound worryControl n xs . (updateItems &&& updateInteractions) where
-    updateItems = (IntMap.unionWith (++) <$> processMonkey worryControl n monkey . (IntMap.! idx) <*> IntMap.insert idx []) . fst
-    updateInteractions = uncurry (over (element idx) . (+) . length . (IntMap.! idx))
-
-monkeyBusiness :: (a, [Int]) -> Int
-monkeyBusiness = product . take 2 . sortBy (flip compare) . snd
+readMonkeys :: String -> Seq Monkey
+readMonkeys = Seq.fromList . map (readMonkey . lines) . splitOn "\n\n"
 
 
-monkeys :: String -> ((IntMap [Int], [Int]), [Monkey])
-monkeys = first (IntMap.fromAscList . zip [0..] &&& flip replicate 0 . length) . unzip . map (readMonkey . lines) . splitOn "\n\n"
+foldEndosIgnoreIdx :: (a -> a) -> b -> (a -> a) -> (a -> a)
+foldEndosIgnoreIdx acc _ curr = curr . acc
 
-solution1 = monkeyBusiness . (!!20) . (iterate <$> (doRound (`div` 3) <$> length <*> zip [0..]) . snd <*> fst)
-solution2 = monkeyBusiness . (!!10000) . (iterate <$> (doRound <$> flip mod . foldl lcm 1 . map divN <*> length <*> zip [0..]) . snd <*> fst)
+processMonkey :: (Int -> Int) -> Int -> Monkey -> Seq Monkey -> Seq Monkey
+processMonkey worryCtl ownIdx monkey = cleanSelf . foldedEffects where
+    foldedEffects = Seq.foldlWithIndex foldEndosIgnoreIdx id (Seq.mapWithIndex (const fFromItem) $ items monkey)
 
-main = print . (solution1 &&& solution2) . monkeys =<< readFile "input"
+    fFromItem :: Int -> Seq Monkey -> Seq Monkey
+    fFromItem n = Seq.adjust g idx where
+        updatedVal = worryCtl $ op' monkey n
+        idx = next monkey updatedVal
+        g m = m { items = items m Seq.|> updatedVal } -- There must be a lens way...
+
+    cleanSelf :: Seq Monkey -> Seq Monkey
+    cleanSelf = Seq.adjust g ownIdx where
+        g m = m { items = Seq.empty, interactionCount = interactionCount m + Seq.length (items m) }
+
+doRound :: (Int -> Int) -> Seq Monkey -> Seq Monkey
+doRound worryCtl ms = doRound' [0..(Seq.length ms -1)] ms where
+    doRound' [] = id
+    doRound' (n:ns) = doRound' ns . (processMonkey worryCtl n <$> (`Seq.index` n) <*> id)
+
+-- Alternatively as a fold - slightly harder to read
+-- doRound worryCtl ms = foldl (flip $ (\n -> processMonkey worryCtl n <$> (`Seq.index` n) <*> id)) ms [0..(Seq.length ms - 1)] 
+
+monkeyBusiness :: Seq Monkey -> Int
+monkeyBusiness = product . take 2 . sortBy (flip compare) . map interactionCount . toList
+
+solution1 = monkeyBusiness . (!!20) . iterate (doRound (`div` 3))
+solution2 = monkeyBusiness . (!!10000) . (iterate <$> (doRound . flip mod . Seq.foldrWithIndex (const $ lcm . divN) 1) <*> id)
+
+main = print . (solution1 &&& solution2) . readMonkeys =<< readFile "input"
