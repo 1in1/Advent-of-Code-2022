@@ -6,47 +6,51 @@ import Data.Bool
 import Data.HashSet (HashSet)
 import Data.List
 import Data.Maybe
-import Data.MultiSet (MultiSet)
 import System.IO
 import qualified Data.HashSet as HashSet
-import qualified Data.MultiSet as MultiSet
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HashMap
+import Debug.Trace
 
 type Point = (Int, Int)
 data Parse = Parse {
     end :: Point,
     start :: Point,
-    blizzards :: MultiSet (Point, Char),
+    blizzards :: HashSet (Point, Char),
+    blizzardsMap :: HashMap (Point, Char) (Point, Char),
     walls :: HashSet Point,
     w :: Int,
     h :: Int
     } deriving (Show, Eq)
 
 parse :: String -> Parse
-parse = (Parse <$>
-    (fromJust . elemIndex '.' . last &&& subtract 1 . length) <*>
-    (,0) . fromJust . elemIndex '.' . head <*>
-    MultiSet.fromList .
-        filter ((`elem` "^v<>") . snd) . 
-        concatMap ((\(y,xs) -> [((x,y),c) | (x,c) <- xs]) . second (zip [0..])) . 
-        zip [0..] <*>
-    HashSet.fromList .
-        map fst .
-        filter ((=='#') . snd) .
-        concatMap ((\(y,xs) -> [((x,y),c) | (x,c) <- xs]) . second (zip [0..])) . 
-        zip [0..] <*>
-    length . head <*>
-    length)
-     . lines
+parse s = Parse end start blizzards blizzardsMap walls w h where
+    s' = lines s
+    end = (fromJust . elemIndex '.' . last &&& subtract 1 . length) s'
+    start = ((,0) . fromJust . elemIndex '.' . head) s'
+    coords = concatMap ((\(y,xs) -> [((x,y),c) | (x,c) <- xs]) . second (zip [0..])) $
+        zip [0..] s'
+    blizzards = HashSet.fromList $ filter ((`elem` "^v<>") . snd) coords
+    blizzardsMap = blizzardMoveMap w h walls
+    walls = HashSet.fromList $ map fst $ filter ((=='#') . snd) coords
+    w = length $ head s'
+    h = length s'
 
-moveBlizzards :: Int -> Int -> HashSet Point -> MultiSet (Point, Char) -> MultiSet (Point, Char)
-moveBlizzards w h walls = MultiSet.map (wrap . move) where
-    move (p,c) = (p, dir c p, c)
+moveBlizzards :: Parse -> HashSet (Point, Char) -> HashSet (Point, Char)
+moveBlizzards = HashSet.map . (HashMap.!) . blizzardsMap
+
+blizzardMoveMap :: Int -> Int -> HashSet Point -> HashMap (Point, Char) (Point, Char)
+blizzardMoveMap w h walls = HashMap.fromList $ map (id &&& wrap . move) allPossibilePositions where
+    allPossibilePositions = concatMap (\p -> [(p,d) | d <- "^v<>"]) $
+        filter (not . flip HashSet.member walls)
+        [(x,y) | x <- [1..w-2], y <- [0..h-1]]
+    move (p,c) = (dir c p, c)
     dir '^' = second (subtract 1)
     dir 'v' = second (+1)
     dir '<' = first (subtract 1)
     dir '>' = first (+1)
-    wrap (p,p',c)
-        | HashSet.member p' walls = (cross c p, c)
+    wrap (p',c)
+        | HashSet.member p' walls = (cross c p', c)
         | otherwise = (p',c) where
         -- We assume there are no up (resp. down) blizzards in the beginning (resp. end) columns
         -- If there were, then cycling back would be undefined
@@ -55,11 +59,11 @@ moveBlizzards w h walls = MultiSet.map (wrap . move) where
         cross '<' (x,y) = (w-2,y)
         cross '>' (x,y) = (1,y)
 
-bfs :: Int -> Point -> HashSet Point -> HashSet (Int, Point) -> [MultiSet (Point, Char)] -> [(Int, Point)] -> Int
-bfs h end walls visited blizzardsAtTimes (x:xs)
-    | HashSet.member x visited = bfs h end walls visited blizzardsAtTimes xs
+bfs :: Int -> Int -> Point -> HashSet Point -> HashSet (Int, Point) -> [HashSet (Point, Char)] -> [(Int, Point)] -> Int
+bfs loopLength h end walls visited blizzardsAtTimes (x:xs)
+    | HashSet.member x visited = bfs loopLength h end walls visited blizzardsAtTimes xs
     | end == snd x = fst x
-    | otherwise = bfs h end walls (HashSet.insert x visited) blizzardsAtTimes (xs ++ ongoing) where
+    | otherwise = bfs loopLength h end walls (HashSet.insert x visited) blizzardsAtTimes (xs ++ ongoing) where
     t' = 1 + fst x
     ongoing = map (t',) $
         filter ((< h) . snd) $
@@ -74,7 +78,7 @@ bfs h end walls visited blizzardsAtTimes (x:xs)
             first (+1)
             ]
     willNotHitBlizzard p = not $
-        any (`MultiSet.member` (blizzardsAtTimes!!t')) [
+        any (`HashSet.member` (blizzardsAtTimes!!(t' `mod` loopLength))) [
             (p,'^'),
             (p,'v'),
             (p,'<'),
@@ -82,34 +86,30 @@ bfs h end walls visited blizzardsAtTimes (x:xs)
             ]
 
 solution1 = bfs <$>
+    (lcm <$> subtract 2 . w <*> subtract 2 . h) <*>
     h <*>
     end <*>
     walls <*>
     const HashSet.empty <*>
-    (iterate <$> (moveBlizzards <$> w <*> h <*> walls) <*> blizzards) <*>
+    (iterate <$> moveBlizzards <*> blizzards) <*>
     singleton . (0,) . start
-solution2 p = t1 + t2 + t3 where
-    blizzardsInTime = (iterate <$> (moveBlizzards <$> w <*> h <*> walls) <*> blizzards) p
-    t1 = (bfs <$>
+solution2 (t1, p) = t3 where
+    blizzardsInTime = (iterate <$> moveBlizzards <*> blizzards) p
+    t2 = (bfs <$>
+        (lcm <$> subtract 2 . w <*> subtract 2 . h) <*>
+        h <*>
+        start <*>
+        walls  <*>
+        const HashSet.empty <*>
+        const blizzardsInTime <*>
+        singleton . (t1,) . end) p
+    t3 = (bfs <$>
+        (lcm <$> subtract 2 . w <*> subtract 2 . h) <*>
         h <*>
         end <*>
         walls <*>
         const HashSet.empty <*>
         const blizzardsInTime <*>
-        singleton . (0,) . start) p
-    t2 = (bfs <$>
-        h <*>
-        start <*>
-        walls <*>
-        const HashSet.empty <*>
-        const (drop t1 blizzardsInTime) <*>
-        singleton . (0,) . end) p
-    t3 = (bfs <$>
-        h <*>
-        end <*>
-        walls <*>
-        const HashSet.empty <*>
-        const (drop (t1 + t2) blizzardsInTime) <*>
-        singleton . (0,) . start) p
+        singleton . (t2,) . start) p
 
-main = print . (solution1 &&& solution2) . parse =<< readFile "input"
+main = print . (fst &&& solution2) . (solution1 &&& id) . parse =<< readFile "input"
