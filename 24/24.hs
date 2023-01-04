@@ -3,14 +3,15 @@ import Control.Arrow
 import Control.Lens
 import Control.Monad
 import Data.Bool
+import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet)
 import Data.List
 import Data.Maybe
+import Data.PQueue.Min (MinQueue)
 import System.IO
-import qualified Data.HashSet as HashSet
-import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
-import Debug.Trace
+import qualified Data.HashSet as HashSet
+import qualified Data.PQueue.Min as MinQueue
 
 type Point = (Int, Int)
 data Parse = Parse {
@@ -59,13 +60,20 @@ blizzardMoveMap w h walls = HashMap.fromList $ map (id &&& wrap . move) allPossi
         cross '<' (x,y) = (w-2,y)
         cross '>' (x,y) = (1,y)
 
-bfs :: Int -> Int -> Point -> HashSet Point -> HashSet (Int, Point) -> [HashSet (Point, Char)] -> [(Int, Point)] -> Int
-bfs loopLength h end walls visited blizzardsAtTimes (x:xs)
+d :: Point -> Point -> Int
+d (x,y) (x',y') = abs(x-x') + abs(y-y')
+
+instance {-# OVERLAPPING #-} Ord ((Int, Point), Int) where
+    compare ((s, _), a) ((t, _), b) = compare (s,a) (t,b)
+
+bfs :: Int -> Int -> Point -> HashSet Point -> HashSet (Int, Point) -> [HashSet (Point, Char)] -> MinQueue ((Int, Point), Int) -> Int
+bfs loopLength h end walls visited blizzardsAtTimes queue
     | HashSet.member x visited = bfs loopLength h end walls visited blizzardsAtTimes xs
     | end == snd x = fst x
-    | otherwise = bfs loopLength h end walls (HashSet.insert x visited) blizzardsAtTimes (xs ++ ongoing) where
+    | otherwise = bfs loopLength h end walls (HashSet.insert x visited) blizzardsAtTimes (foldl (flip MinQueue.insert) xs ongoing) where
+    ((x, _), xs) = MinQueue.deleteFindMin queue
     t' = 1 + fst x
-    ongoing = map (t',) $
+    ongoing = map (\p -> ((t',p), d p end)) $
         filter ((< h) . snd) $
         filter ((>= 0) . snd) $
         filter willNotHitBlizzard $
@@ -92,7 +100,7 @@ solution1 = bfs <$>
     walls <*>
     const HashSet.empty <*>
     (iterate <$> moveBlizzards <*> blizzards) <*>
-    singleton . (0,) . start
+    MinQueue.singleton . ((0,) . start &&& (d <$> start <*> end))
 solution2 (t1, p) = t3 where
     blizzardsInTime = (iterate <$> moveBlizzards <*> blizzards) p
     t2 = (bfs <$>
@@ -102,7 +110,7 @@ solution2 (t1, p) = t3 where
         walls  <*>
         const HashSet.empty <*>
         const blizzardsInTime <*>
-        singleton . (t1,) . end) p
+        MinQueue.singleton . ((t1,) . end &&& (d <$> start <*> end))) p
     t3 = (bfs <$>
         (lcm <$> subtract 2 . w <*> subtract 2 . h) <*>
         h <*>
@@ -110,6 +118,6 @@ solution2 (t1, p) = t3 where
         walls <*>
         const HashSet.empty <*>
         const blizzardsInTime <*>
-        singleton . (t2,) . start) p
+        MinQueue.singleton . ((t2,) . start &&& (d <$> start <*> end))) p
 
 main = print . (fst &&& solution2) . (solution1 &&& id) . parse =<< readFile "input"

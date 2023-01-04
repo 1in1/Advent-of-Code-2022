@@ -143,7 +143,7 @@ Some tidying done after original write for readability, but no significant perf 
 24
 ```
 > time "24" 
-> 6.41s user 0.10s system 99% cpu 6.520 total
+> 2.88s user 0.29s system 95% cpu 3.308 total
 ```
 
 25
